@@ -373,70 +373,138 @@ class SynchroniseItem(SynchroniseWooCommerce):
 
 			self.set_sync_hash()
 
+	
 	def create_item(self, wc_product: WooCommerceProduct) -> None:
+        
 		"""
-		Create an ERPNext Item from the given WooCommerce Product
-		"""
+        Create or Update an ERPNext Item from the given WooCommerce Product.
+        Ensures DuplicateEntryError is avoided by checking for SKU/Item Code existence.
+        """
+        
 		wc_server = frappe.get_cached_doc("WooCommerce Server", wc_product.woocommerce_server)
 
-		# Create Item
-		item = frappe.new_doc("Item")
+        # 1. Determine the intended Item Code (SKU or ID)
+        
+		target_item_code = (
+            wc_product.sku
+            if wc_server.name_by == "Product SKU" and wc_product.sku
+            else str(wc_product.woocommerce_id)
+        )
 
-		# Handle variants' attributes
+        # 2. Check if Item already exists in ERPNext by its Primary Key (item_code)
+        
+		if frappe.db.exists("Item", target_item_code):
+            
+			item = frappe.get_doc("Item", target_item_code)
+			frappe.logger().debug(f"WooCommerce Fusion: Found existing Item {target_item_code}. Updating link.")
+        
+		else:
+            
+			item = frappe.new_doc("Item")
+            
+			item.item_code = target_item_code
+            
+			item.stock_uom = wc_server.uom or _("Nos")
+            
+			item.item_group = wc_server.item_group
+
+        # 3. Handle variants' attributes
+        
 		if wc_product.type in ["variable", "variation"]:
+            
 			self.create_or_update_item_attributes(wc_product)
+            
+            # Clear existing attributes to prevent duplicates on update
+            
+			item.set("attributes", []) 
+            
 			wc_attributes = json.loads(wc_product.attributes)
+            
 			for wc_attribute in wc_attributes:
+                
 				row = item.append("attributes")
+                
 				row.attribute = wc_attribute["name"]
+                
 				if wc_product.type == "variation":
+                    
 					row.attribute_value = wc_attribute["option"]
 
-		# Handle variants
+        # 4. Handle variants (Variable vs Variation)
+        
 		if wc_product.type == "variable":
+            
 			item.has_variants = 1
 
+        
 		if wc_product.type == "variation":
-			# Check if parent exists
+            
 			woocommerce_product_name = generate_woocommerce_record_name_from_domain_and_id(
-				wc_product.woocommerce_server, wc_product.parent_id
-			)
+                wc_product.woocommerce_server, wc_product.parent_id
+            )
+            
 			parent_item, _parent_wc_product = run_item_sync(woocommerce_product_name=woocommerce_product_name)
+            
 			item.variant_of = parent_item.item_code
 
-		item.item_code = (
-			wc_product.sku
-			if wc_server.name_by == "Product SKU" and wc_product.sku
-			else str(wc_product.woocommerce_id)
-		)
-		item.stock_uom = wc_server.uom or _("Nos")
-		item.item_group = wc_server.item_group
+        # 5. Link to WooCommerce Server (Update child table if missing)
+        
 		item.item_name = wc_product.woocommerce_name
-		row = item.append("woocommerce_servers")
-		row.woocommerce_id = wc_product.woocommerce_id
-		row.woocommerce_server = wc_server.name
-		item.flags.ignore_mandatory = True
-		item.flags.created_by_sync = True
+        
+        
+		server_link_exists = False
+        
+		for iws in item.get("woocommerce_servers"):
+            
+			if iws.woocommerce_server == wc_server.name and iws.woocommerce_id == str(wc_product.woocommerce_id):
+                
+				server_link_exists = True
+                
+				break
+        
+        
+		if not server_link_exists:
+            
+			item.append("woocommerce_servers", {
+                "woocommerce_id": wc_product.woocommerce_id,
+                "woocommerce_server": wc_server.name,
+                "enabled": 1
+            })
 
+        # 6. Image Sync
+        
 		if wc_server.enable_image_sync:
+            
 			wc_product_images = json.loads(wc_product.images)
+            
 			if len(wc_product_images) > 0:
+                
 				item.image = wc_product_images[0]["src"]
 
+        # 7. Finalize and Save
+        
 		_modified, item = self.set_item_fields(item=item)
+        
+		item.flags.ignore_mandatory = True
+        
 		item.flags.created_by_sync = True
+        
+        # Use .save() to handle both UPDATE and INSERT automatically
+        
+		item.save(ignore_permissions=True)
 
-		item.insert()
-
+        # 8. Set the internal state for subsequent tasks
+        
 		self.item = ERPNextItemToSync(
-			item=item,
-			item_woocommerce_server_idx=next(
-				iws.idx
-				for iws in item.woocommerce_servers
-				if iws.woocommerce_server == wc_product.woocommerce_server
-			),
-		)
+            item=item,
+            item_woocommerce_server_idx=next(
+                iws.idx
+                for iws in item.woocommerce_servers
+                if iws.woocommerce_server == wc_product.woocommerce_server
+            ),
+        )
 
+        
 		self.set_sync_hash()
 
 	def create_or_update_item_attributes(self, wc_product: WooCommerceProduct):
