@@ -496,7 +496,7 @@ class SynchroniseSalesOrder(SynchroniseWooCommerce):
         # --- Red Team Custom Modification: Start ---
         # جلب تاريخ التعديل من ووكومرس (والذي يمثل تاريخ تحول الطلب إلى مكتمل)
         # الكود الأصلي يستخدم woocommerce_date_modified كمرجع لتاريخ التعديل
-        if wc_order.woocommerce_date_modified:
+        if wc_order.date_modified:
             # إذا كان حقلك المخصص في ERPNext من نوع "Date" (تاريخ فقط):
             new_sales_order.custom_woocommerce_order_complete_date = wc_order.date_modified.split("T")[0]
             
