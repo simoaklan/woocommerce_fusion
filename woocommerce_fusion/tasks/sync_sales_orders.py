@@ -490,6 +490,21 @@ class SynchroniseSalesOrder(SynchroniseWooCommerce):
 		new_sales_order.custom_woocommerce_customer_note = wc_order.customer_note
 
 		new_sales_order.woocommerce_status = WC_ORDER_STATUS_MAPPING_REVERSE[wc_order.status]
+
+		#new_sales_order.woocommerce_status = WC_ORDER_STATUS_MAPPING_REVERSE[wc_order.status]
+        
+        # --- Red Team Custom Modification: Start ---
+        # جلب تاريخ التعديل من ووكومرس (والذي يمثل تاريخ تحول الطلب إلى مكتمل)
+        # الكود الأصلي يستخدم woocommerce_date_modified كمرجع لتاريخ التعديل
+        if wc_order.woocommerce_date_modified:
+            # إذا كان حقلك المخصص في ERPNext من نوع "Date" (تاريخ فقط):
+            new_sales_order.custom_woocommerce_order_complete_date = wc_order.date_modified.split("T")[0]
+            
+            # ملاحظة: إذا كان حقلك من نوع "Datetime" (تاريخ ووقت)، استخدم السطر التالي بدلاً من السطر أعلاه:
+            # new_sales_order.custom_woocommerce_order_complete_date = wc_order.woocommerce_date_modified.replace("T", " ")
+        # --- Red Team Custom Modification: End ---
+
+        wc_server = frappe.get_cached_doc("WooCommerce Server", wc_order.woocommerce_server)
 		wc_server = frappe.get_cached_doc("WooCommerce Server", wc_order.woocommerce_server)
 
 		new_sales_order.woocommerce_server = wc_order.woocommerce_server
