@@ -252,7 +252,8 @@ class SynchroniseSalesOrder(SynchroniseWooCommerce):
 			#	else woocommerce_order.payment_method
 			#)
 			# Set the payment_method field using the payment method ID directly
-        	payment_method = wc_order.payment_method
+        	
+			payment_method = woocommerce_order.payment_method
 			if sales_order.woocommerce_payment_method != payment_method:
 				sales_order.woocommerce_payment_method = payment_method
 				so_dirty = True
@@ -516,7 +517,8 @@ class SynchroniseSalesOrder(SynchroniseWooCommerce):
 		#	else wc_order.payment_method
 		#)
 		# Set the payment_method field using the payment method ID directly
-        payment_method = wc_order.payment_method
+        
+		payment_method = wc_order.payment_method
 		new_sales_order.woocommerce_payment_method = payment_method
 		created_date = wc_order.date_created.split("T")
 		new_sales_order.transaction_date = created_date[0]
